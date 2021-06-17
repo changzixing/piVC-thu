@@ -18,7 +18,6 @@ build:
     - dotnet build -c Release
     - echo "Build finished."
 
-
 prepare_data:
   stage: prepare_data
   script:

@@ -24,30 +24,24 @@ namespace piVC_thu
         public int Apply(IRMain cfg)
         {
             cfg.Print(writer);
-            LinkedListNode<Function> listNodeFunction = cfg.functions.First;
-            //listNodeFunction.Value.preconditionBlock.Print(writer);
-            PreconditionBlock head = cfg.functions.First.Value.preconditionBlock;
-            LinkedList<Block> basicPath = new LinkedList<Block>();
+            
             foreach(Predicate predicate in cfg.predicates)
             {
                 solver.definePredicate(predicate);
             }
-            if(find_basic_path(head.successors.First.Value, false, head.condition, basicPath))
+            foreach (Function function in cfg.functions)
             {
-                return -2;
+                PreconditionBlock head = function.preconditionBlock;
+                LinkedList<Block> basicPath = new LinkedList<Block>();
+                if (find_basic_path(head.successors.First.Value, head.condition, basicPath))
+                {
+                    return -1;
+                }
             }
-            return 2;
-            /*PostconditionBlock end = cfg.functions.First.Value.postconditionBlock;
-            BasicPaths(head.successors.First.Value, end, head.condition, end.condition);
-            foreach(BasicPath basicPath in basicPaths)
-            {
-                basicPath.Check(writer);
-            }*/
-            //throw new NotImplementedException("The deductive verification algorithm is not implemented yet.");
+            return 1;
         }
 
-
-        public bool find_basic_path(Block block, bool isInLoop, Expression precondition, LinkedList<Block> basicPath)
+        public bool find_basic_path(Block block, Expression precondition, LinkedList<Block> basicPath)
         {
             basicPath.AddLast(block);
             foreach(Block succeccor in block.successors)
@@ -63,7 +57,7 @@ namespace piVC_thu
                 }
                 else if(succeccor is LoopHeadBlock)
                 {
-                    if (isInLoop)
+                    if(block != succeccor.predecessors.First.Value)
                     {
                         LoopHeadBlock loopHeadBlock = (LoopHeadBlock)succeccor;
                         Expression postcondition = loopHeadBlock.invariant;
@@ -81,20 +75,19 @@ namespace piVC_thu
                             return true;
                         }
                         LinkedList<Block> newBasicPath = new LinkedList<Block>();
-                        if(find_basic_path(succeccor, true, postcondition, newBasicPath))
+                        if(find_basic_path(succeccor, postcondition, newBasicPath))
                         {
                             return true;
                         }
-                        basicPath.RemoveLast();
                     }
                 }
                 else
                 {
-                    if(find_basic_path(succeccor, isInLoop, precondition, basicPath))
+                    LinkedList<Block> newBasicPath = new LinkedList<Block>(basicPath);
+                    if(find_basic_path(succeccor, precondition, newBasicPath))
                     {
                         return true;
                     }
-                    basicPath.RemoveLast();
                 }
             }
             return false;
@@ -102,16 +95,17 @@ namespace piVC_thu
 
         public bool wlp_check(LinkedList<Block> basicPath, Expression precondition, Expression postcondition)
         {
-            precondition.Print(writer);
-            Console.WriteLine('\n');
-            postcondition.Print(writer);
-            Console.WriteLine('\n');
             
             Expression expression = postcondition;
             LinkedListNode<Block> block = basicPath.Last;
             while(block!=null)
             {
                 LinkedListNode<Statement> statement = block.Value.statements.Last;
+                if(statement == null)
+                {
+                    block = block.Previous;
+                    continue;
+                }
                 while(true)
                 {
                     if (statement.Value is VariableAssignStatement)
@@ -127,13 +121,11 @@ namespace piVC_thu
                     else if (statement.Value is AssertStatement)
                     {
                         AssertStatement assertStatement = (AssertStatement)statement.Value;
-                        precondition = new AndExpression(assertStatement.annotation, expression);
+                        expression = new AndExpression(assertStatement.annotation, expression);
                     }
                     else if (statement.Value is FunctionCallStatement)
                     {
                         FunctionCallStatement functionCallStatement = (FunctionCallStatement)statement.Value;
-                        //VariableExpression variableExpression = new VariableExpression(functionCallStatement.rhs);
-                        //expression = expression.Substitute(functionCallStatement.variable, variableAssignStatement.rhs);
                         Expression functionCallPostCondition = functionCallStatement.rhs.function.postconditionBlock.condition;
 
                         List<LocalVariable> localVariables = functionCallStatement.lhs;
@@ -159,7 +151,10 @@ namespace piVC_thu
                     }
                     else if (statement.Value is SubscriptAssignStatement)
                     {
-                        //todo
+                        SubscriptAssignStatement subscriptAssignStatement = (SubscriptAssignStatement)statement.Value;
+                        Expression array = new VariableExpression(subscriptAssignStatement.array);
+                        ArrayUpdateExpression arrayUpdateExpression = new ArrayUpdateExpression(array, subscriptAssignStatement.subscript, subscriptAssignStatement.rhs, new VariableExpression(subscriptAssignStatement.array.length));
+                        expression = expression.Substitute(subscriptAssignStatement.array, arrayUpdateExpression);
                     }
 
                     //statement.Value.Print(writer);
@@ -176,8 +171,6 @@ namespace piVC_thu
                 block = block.Previous;
             }
             ImplicationExpression implicationExpression = new ImplicationExpression(precondition, expression);
-            implicationExpression.Print(writer);
-            writer.Write('\n');
             if (solver.CheckValid(implicationExpression) == null)
             {
                 return false;
