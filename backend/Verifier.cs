@@ -23,7 +23,7 @@ namespace piVC_thu
         // “= 0” 表示 unknown
         public int Apply(IRMain cfg)
         {
-            cfg.Print(writer);
+            //cfg.Print(writer);
             
             foreach(Predicate predicate in cfg.predicates)
             {
